@@ -57,15 +57,9 @@ class ConfirmoPaymentModuleFrontController extends ModuleFrontController
             $this->displayError("Current currency not enabled for this payment method.");
         }
 
-        $cryptoCurrency = Tools::getValue('currency');
-        // if crypto currency isn't set, then display error
-        if (!$cryptoCurrency) {
-            $this->displayError("Payment cryptocurrency not set.");
-        }
-
         // attempt to create a new Confirmo payment
         try {
-            $response = $this->module->createPayment($cart, $cryptoCurrency);
+            $response = $this->module->createPayment($cart);
 
             // if the response does not contain URL to the payment gateway, display error
             if (!empty($response->url)) {

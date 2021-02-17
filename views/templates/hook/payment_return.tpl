@@ -47,6 +47,10 @@
   <div class="alert alert-success">
     {l s='Thank you for your payment. It might take several minutes for your payment to get validated by the network. You should receive a confirmation email shortly.' mod='confirmo'}
   </div>
+{elseif $created}
+  <div class="alert alert-success">
+    {l s='Your payment has been created. Please proceed and pay your invoice.' mod='confirmo'}
+  </div>
 {elseif $error}
   <div class="alert alert-danger">
     {l s='There was a problem processing your order. We recommend to press back button in your web browser and request the refund via CONFIRMO.' mod='confirmo'}

@@ -97,13 +97,13 @@ class ConfirmoNotificationModuleFrontController extends ModuleFrontController
                 $orderStatus = (int)$this->module->getConfigValue('STATUS_RECEIVED');
                 break;
             case 'expired':
-                //$orderStatus = (int)$this->module->getConfigValue('STATUS_ERROR');
-                // we do not want to invalidate the whole order on expired payment - allow the customer to repeat the payment
-                die;
+            case 'error':
+                $orderStatus = (int)$this->module->getConfigValue('STATUS_ERROR');
                 break;
+            case 'prepared':
             case 'active':
                 // still waiting for payment
-                die;
+                $orderStatus = (int)$this->module->getConfigValue('STATUS_CREATED');
                 break;
             default:
                 // payment status is one we don't handle, so just stop processing
@@ -138,20 +138,8 @@ class ConfirmoNotificationModuleFrontController extends ModuleFrontController
             $shop = !empty($reference->shop_id) ? new Shop((int)$reference->shop_id) : null;
 
             $payment_method = $this->module->l("CONFIRMO");
-            // set payment method name to currency name if enabled
-            if ($this->module->getConfigValue('CURRENCY_IN_PAYMENT_METHOD')) {
-                if ($callbackData->customerAmount && $callbackData->customerAmount->currency) {
-                    $currencyName = $this->module->currencyCodeToName($callbackData->customerAmount->currency);
-                    if ($currencyName) {
-                        $payment_method = $currencyName;
-                    }
-                }
-            }
             $this->module->validateOrder($cart->id, $orderStatus, $callbackData->merchantAmount->amount, $payment_method, null, $extra, null, false, $customer->secure_key, $shop);
             $order = new Order($this->module->currentOrder);
-
-            // just showing invoice Id in order's payment.
-            $order->addOrderPayment(0, $payment_method, $callbackData->id);
 
             // add Confirmo payment info to private order note for admin reference
             $messageLines = array(

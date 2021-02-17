@@ -45,7 +45,8 @@ class Confirmo extends PaymentModule
         'LTC' => 'Litecoin'
     );
     protected $payoutCurrencies = array(
-        array('code' => 'CRYPTO', 'name' => 'Cryptocurrencies'),
+        array('code' => 'CRYPTO', 'name' => 'Same crypto customer pays'),
+        array('code' => 'BTC', 'name' => 'BTC'),
         array('code' => 'CZK', 'name' => 'CZK'),
         array('code' => 'EUR', 'name' => 'EUR'),
         array('code' => 'USD', 'name' => 'USD'),
@@ -60,9 +61,9 @@ class Confirmo extends PaymentModule
     {
         $this->name = 'confirmo';
         $this->tab = 'payments_gateways';
-        $this->version = '3.0.2';
+        $this->version = '3.2.1';
         $this->author = 'Tomas Hubik';
-        $this->author_uri = 'https://github.com/hubiktomas';
+        $this->author_uri = 'https://github.com/confirmo';
         $this->ps_versions_compliancy = array('min' => '1.5', 'max' => '1.7');
         $this->controllers = array('payment', 'notification', 'return');
 
@@ -115,6 +116,11 @@ class Confirmo extends PaymentModule
             'paid' => false,
         ));
 
+        $this->createOrderStatus('WAITING_FOR_PAYMENT', "Waiting for payment", array(
+            'color' => '#FF8000',
+            'paid' => false,
+        ));
+
         return true;
     }
 
@@ -127,14 +133,13 @@ class Confirmo extends PaymentModule
             !Configuration::deleteByName('CONFIRMO_API_KEY') ||
             !Configuration::deleteByName('CONFIRMO_CALLBACK_PASSWORD') ||
             !Configuration::deleteByName('CONFIRMO_PAYOUT_CURRENCY') ||
-            !Configuration::deleteByName('CONFIRMO_ACCEPTED_CRYPTOCURRENCIES') ||
             !Configuration::deleteByName('CONFIRMO_CALLBACK_SSL') ||
             !Configuration::deleteByName('CONFIRMO_INVOICE_URL_MESSAGE') ||
-            !Configuration::deleteByName('CONFIRMO_CURRENCY_IN_PAYMENT_METHOD') ||
             !Configuration::deleteByName('CONFIRMO_NOTIFY_EMAIL') ||
+            !Configuration::deleteByName('CONFIRMO_STATUS_CREATED') ||
             !Configuration::deleteByName('CONFIRMO_STATUS_RECEIVED') ||
-            !Configuration::deleteByName('CONFIRMO_STATUS_CONFIRMED')/* ||
-            !Configuration::deleteByName('CONFIRMO_STATUS_ERROR') ||
+            !Configuration::deleteByName('CONFIRMO_STATUS_CONFIRMED') ||
+            !Configuration::deleteByName('CONFIRMO_STATUS_ERROR')/* ||
             !Configuration::deleteByName('CONFIRMO_STATUS_REFUND')*/
         ) {
             return false;
@@ -142,6 +147,7 @@ class Confirmo extends PaymentModule
 
         // delete custom order statuses
         $this->deleteOrderStatus('PAYMENT_RECEIVED');
+        $this->deleteOrderStatus('WAITING_FOR_PAYMENT');
 
         return true;
     }
@@ -175,11 +181,6 @@ class Confirmo extends PaymentModule
                 $output .= $this->displayError($this->l("Payout Currency is required."));
             }
 
-            // check payout currency
-            if (empty(unserialize($fieldValues['CONFIRMO_ACCEPTED_CRYPTOCURRENCIES']))) {
-                $output .= $this->displayError($this->l("Select at least one cryptocurrency to accept."));
-            }
-
             // verify api key and payout currency with account (if there are no prior validation errors)
             if ($output == "") {
                 try {
@@ -193,19 +194,12 @@ class Confirmo extends PaymentModule
                     } else {
                         // Extract only enabled currencies (settlement set in the account)
                         $enabledCurrenciesArray = $this->extractEnabledSettlementCurrencies($response->data);
-                        $acceptedCurrenciesArray = unserialize($fieldValues['CONFIRMO_ACCEPTED_CRYPTOCURRENCIES']);
                         if (empty($enabledCurrenciesArray)) {
                             $errorMsg = $this->l("Settlement methods not set in your CONFIRMO account. Go to Settings > Settlement Methods and add settlement methods first.");
                             $output .= $this->displayError($errorMsg);
                         } else {
-                            // For payout in crypto, there has to be a settlement currency for each accepted cryptocurrency
-                            if ($fieldValues['CONFIRMO_PAYOUT_CURRENCY'] == 'CRYPTO' && array_intersect($acceptedCurrenciesArray, $enabledCurrenciesArray) != $acceptedCurrenciesArray) {
-                                $nonAcceptedCurrencies = array_diff($acceptedCurrenciesArray, array_intersect($acceptedCurrenciesArray, $enabledCurrenciesArray));
-                                $implodedCurrencies = implode(',', $nonAcceptedCurrencies);
-                                $errorMsg = sprintf($this->l("Unable to activate %s payments. Please add %s settlement method in your Confirmo account first: Settings > Settlement methods > Add settlement method"), $implodedCurrencies, $implodedCurrencies);
-                                $output .= $this->displayError($errorMsg);
                             // Check if there is a settlement currency for payout currency in fiat
-                            } elseif ($fieldValues['CONFIRMO_PAYOUT_CURRENCY'] != 'CRYPTO' && !in_array($fieldValues['CONFIRMO_PAYOUT_CURRENCY'], $enabledCurrenciesArray)) {
+                            if ($fieldValues['CONFIRMO_PAYOUT_CURRENCY'] != 'CRYPTO' && !in_array($fieldValues['CONFIRMO_PAYOUT_CURRENCY'], $enabledCurrenciesArray)) {
                                 $errorMsg = $this->l("Settlement method is not set in your CONFIRMO account. You currently have the following settlement methods:");
                                 $errorMsg .= '<br> <ul><li>' . implode('</li><li>', $enabledCurrenciesArray) . '</li></ul>';
                                 $errorMsg .= sprintf($this->l("Please add %s settlement method in your Confirmo account first: Settings > Settlement methods > Add settlement method"), $fieldValues['CONFIRMO_PAYOUT_CURRENCY']);
@@ -222,10 +216,6 @@ class Confirmo extends PaymentModule
             if ($output == "") {
                 $loadInitial = true;
                 foreach ($fieldValues as $fieldName => $fieldValue) {
-                    // Skip separate switches for cryptocurrencies as we save them as one whole array
-                    if (strpos($fieldName, 'CONFIRMO_ACCEPTED_CRYPTOCURRENCIES_') !== false) {
-                        continue;
-                    }
                     Configuration::updateValue($fieldName, $fieldValue);
                 }
 
@@ -263,7 +253,6 @@ class Confirmo extends PaymentModule
                     ),
                     'tabs' => array(
                         'general' => $this->l("General"),
-                        'cryptocurrencies' => $this->l("Accepted Cryptourrencies"),
                         'order_statuses' => $this->l("Order Statuses")
                     ),
                     'input' => array(
@@ -336,25 +325,6 @@ class Confirmo extends PaymentModule
                         ),
                         array(
                             'tab' => 'general',
-                            'name' => 'CONFIRMO_CURRENCY_IN_PAYMENT_METHOD',
-                            'type' => 'switch',
-                            'label' => $this->l("Currency Name in Payment Method"),
-                            'desc' => $this->l("Use currency name as the order payment method. Payment method will be CONFIRMO for any currency if disabled."),
-                            'values' => array(
-                                array(
-                                    'id' => 'active_on',
-                                    'value' => 1,
-                                    'label' => $this->l("Enable")
-                                ),
-                                array(
-                                    'id' => 'active_off',
-                                    'value' => 0,
-                                    'label' => $this->l("Disable")
-                                )
-                            )
-                        ),
-                        array(
-                            'tab' => 'general',
                             'name' => 'CONFIRMO_NOTIFY_EMAIL',
                             'type' => 'text',
                             'label' => $this->l("Notification Email"),
@@ -378,6 +348,30 @@ class Confirmo extends PaymentModule
                             'type' => 'select',
                             'label' => $this->l("CONFIRMING"),
                             'desc' => $this->l("At least the required amount has been paid but a sufficient number of confirmations has not been received yet."),
+                            'options' => array(
+                                'query' => $orderStatuses,
+                                'id' => 'id_order_state',
+                                'name' => 'name'
+                            )
+                        ),
+                        array(
+                            'tab' => 'order_statuses',
+                            'name' => 'CONFIRMO_STATUS_CREATED',
+                            'type' => 'select',
+                            'label' => $this->l("ACTIVE"),
+                            'desc' => $this->l("Order was created, but was not paid yet."),
+                            'options' => array(
+                                'query' => $orderStatuses,
+                                'id' => 'id_order_state',
+                                'name' => 'name'
+                            )
+                        ),
+                        array(
+                            'tab' => 'order_statuses',
+                            'name' => 'CONFIRMO_STATUS_ERROR',
+                            'type' => 'select',
+                            'label' => $this->l("ERROR"),
+                            'desc' => $this->l("Invoice expired, or any other unexpected behaviour happened."),
                             'options' => array(
                                 'query' => $orderStatuses,
                                 'id' => 'id_order_state',
@@ -415,29 +409,6 @@ class Confirmo extends PaymentModule
                 )
             )
         );
-
-        // config fields for each supported cryptocurrency
-        foreach ($this->cryptoCurrencies as $currencyCode => $currencyName) {
-            $formFields[0]['form']['input'][] = array(
-                'tab' => 'cryptocurrencies',
-                'name' => 'CONFIRMO_ACCEPTED_CRYPTOCURRENCIES_' . $currencyCode,
-                'type' => 'switch',
-                'label' => $currencyName . ' (' . $currencyCode . ')',
-                'desc' => $this->l("Accept payments in") . " " . $currencyName . ".",
-                'values' => array(
-                    array(
-                        'id' => 'active_on',
-                        'value' => 1,
-                        'label' => $this->l("Enable"),
-                    ),
-                    array(
-                        'id' => 'active_off',
-                        'value' => 0,
-                        'label' => $this->l("Disable"),
-                    ),
-                ),
-            );
-        }
 
         // set up form
         $helper = new HelperForm;
@@ -477,44 +448,23 @@ class Confirmo extends PaymentModule
     /**
      * Loads module config parameters values.
      *
-     * @param bool $initial whether the config values should be loaded from the database (true) or from form POST data (false)
-     *
      * @return array array of config values
      */
-    public function getConfigFieldValues($initial = true)
+    public function getConfigFieldValues()
     {
-        $configFieldValues = array(
+        return array(
             'CONFIRMO_API_KEY' => $this->getConfigValue('API_KEY', true),
             'CONFIRMO_CALLBACK_PASSWORD' => $this->getConfigValue('CALLBACK_PASSWORD', true),
             'CONFIRMO_CALLBACK_SSL' => $this->getConfigValue('CALLBACK_SSL', true),
             'CONFIRMO_INVOICE_URL_MESSAGE' => $this->getConfigValue('INVOICE_URL_MESSAGE', true),
-            'CONFIRMO_CURRENCY_IN_PAYMENT_METHOD' => $this->getConfigValue('CURRENCY_IN_PAYMENT_METHOD', true),
             'CONFIRMO_PAYOUT_CURRENCY' => $this->getConfigValue('PAYOUT_CURRENCY', true),
             'CONFIRMO_NOTIFY_EMAIL' => $this->getConfigValue('NOTIFY_EMAIL', true),
+            'CONFIRMO_STATUS_CREATED' => $this->getConfigValue('STATUS_CREATED', true),
             'CONFIRMO_STATUS_CONFIRMED' => $this->getConfigValue('STATUS_CONFIRMED', true),
-            'CONFIRMO_STATUS_RECEIVED' => $this->getConfigValue('STATUS_RECEIVED', true)/*,
-            'CONFIRMO_STATUS_ERROR' => $this->getConfigValue('STATUS_ERROR', true),
+            'CONFIRMO_STATUS_RECEIVED' => $this->getConfigValue('STATUS_RECEIVED', true),
+            'CONFIRMO_STATUS_ERROR' => $this->getConfigValue('STATUS_ERROR', true)/*,
             'CONFIRMO_STATUS_REFUND' => $this->getConfigValue('STATUS_REFUND', true)*/
         );
-
-        if ($initial) {
-            $configFieldValues['CONFIRMO_ACCEPTED_CRYPTOCURRENCIES'] = $this->getConfigValue('ACCEPTED_CRYPTOCURRENCIES');
-            $acceptedCurrencies = unserialize($configFieldValues['CONFIRMO_ACCEPTED_CRYPTOCURRENCIES']);
-            foreach ($this->cryptoCurrencies as $currencyCode => $currencyName) {
-                $configFieldValues['CONFIRMO_ACCEPTED_CRYPTOCURRENCIES_' . $currencyCode] = in_array($currencyCode, $acceptedCurrencies) ? 1 : 0;
-            }
-        } else {
-            $acceptedCurrencies = array();
-            foreach ($this->cryptoCurrencies as $currencyCode => $currencyName) {
-                $configFieldValues['CONFIRMO_ACCEPTED_CRYPTOCURRENCIES_' . $currencyCode] = $this->getConfigValue('ACCEPTED_CRYPTOCURRENCIES_' . $currencyCode, true);
-                if ($configFieldValues['CONFIRMO_ACCEPTED_CRYPTOCURRENCIES_' . $currencyCode]) {
-                    $acceptedCurrencies[] = $currencyCode;
-                }
-            }
-            $configFieldValues['CONFIRMO_ACCEPTED_CRYPTOCURRENCIES'] = serialize($acceptedCurrencies);
-        }
-
-        return $configFieldValues;
     }
 
     /**
@@ -528,9 +478,9 @@ class Confirmo extends PaymentModule
             $this->defaultValues = array(
                 'CONFIRMO_STATUS_CONFIRMED' => Configuration::get('PS_OS_PAYMENT'),
                 'CONFIRMO_STATUS_RECEIVED' => $this->getOrderStatus('PAYMENT_RECEIVED'),
-                //'CONFIRMO_STATUS_ERROR' => Configuration::get('PS_OS_ERROR'),
+                'CONFIRMO_STATUS_CREATED' => $this->getOrderStatus('WAITING_FOR_PAYMENT'),
+                'CONFIRMO_STATUS_ERROR' => Configuration::get('PS_OS_ERROR'),
                 //'CONFIRMO_STATUS_REFUND' => Configuration::get('PS_OS_REFUND'),
-                'CONFIRMO_ACCEPTED_CRYPTOCURRENCIES' => serialize(array())
             );
         }
 
@@ -571,20 +521,11 @@ class Confirmo extends PaymentModule
             return;
         }
 
-        $paymentButtons = array();
-        $acceptedCryptocurrencies = unserialize($this->getConfigValue('ACCEPTED_CRYPTOCURRENCIES'));
-        foreach ($acceptedCryptocurrencies as $currencyCode) {
-            $paymentButtons[$currencyCode] = array(
-                'name' => $this->cryptoCurrencies[$currencyCode],
-                'code' => $currencyCode,
-                'payment_url' => $this->context->link->getModuleLink($this->name, 'payment', array('currency' => $currencyCode), Configuration::get('PS_SSL_ENABLED')),
-                'button_image_url' => $this->_path . 'views/img/ccy_' . Tools::strtolower($currencyCode) . '.png'
-            );
-        }
+        $paymentUrl = $this->context->link->getModuleLink($this->name, 'payment', array(), Configuration::get('PS_SSL_ENABLED'));
 
         $this->smarty->assign(array(
             'prestashop_15' => version_compare(_PS_VERSION_, '1.5', '>=') && version_compare(_PS_VERSION_, '1.6', '<'),
-            'payment_buttons' => $paymentButtons
+            'payment_url' => $paymentUrl
         ));
 
         return $this->display(__FILE__, 'payment.tpl');
@@ -600,16 +541,13 @@ class Confirmo extends PaymentModule
         }
 
         $paymentButtons = array();
-        $acceptedCryptocurrencies = unserialize($this->getConfigValue('ACCEPTED_CRYPTOCURRENCIES'));
-        foreach ($acceptedCryptocurrencies as $currencyCode) {
-            $newOption = new PrestaShop\PrestaShop\Core\Payment\PaymentOption();
-            $newOption->setModuleName($this->name)
-                ->setCallToActionText($this->l('Pay with') . ' ' . $this->cryptoCurrencies[$currencyCode])
-                ->setAction($this->context->link->getModuleLink($this->name, 'payment', array('currency' => $currencyCode), Configuration::get('PS_SSL_ENABLED')))
-                ->setAdditionalInformation($this->context->smarty->fetch('module:confirmo/views/templates/front/payment_infos.tpl'));
-                //->setLogo($this->_path . 'views/img/ccy_' . Tools::strtolower($currencyCode) . '.png');
-            $paymentButtons[] = $newOption;
-        }
+        $newOption = new PrestaShop\PrestaShop\Core\Payment\PaymentOption();
+        $newOption->setModuleName($this->name)
+            ->setCallToActionText($this->l('Pay with Crypto'))
+            ->setAction($this->context->link->getModuleLink($this->name, 'payment', array(), Configuration::get('PS_SSL_ENABLED')))
+            ->setAdditionalInformation($this->context->smarty->fetch('module:confirmo/views/templates/front/payment_infos.tpl'))
+            ->setLogo($this->_path . 'views/img/ccy_crypto_small.svg');
+        $paymentButtons[] = $newOption;
 
         return $paymentButtons;
     }
@@ -636,6 +574,7 @@ class Confirmo extends PaymentModule
             ORDER BY `date_add` DESC, `id_order_history` DESC
         ');
 
+        $created = false;
         $outofstock = false;
         $confirmed = false;
         $received = false;
@@ -651,6 +590,9 @@ class Confirmo extends PaymentModule
             if ($state['id_order_state'] == $this->getConfigValue('STATUS_RECEIVED')) {
                 $received = true;
             }
+            if ($state['id_order_state'] == $this->getConfigValue('STATUS_CREATED')) {
+                $created = true;
+            }
             /*if ($state['id_order_state'] == $this->getConfigValue('STATUS_REFUND')) {
                 $refunded = true;
             }
@@ -665,7 +607,8 @@ class Confirmo extends PaymentModule
             'received' => $received,
             'refunded' => $refunded,
             'error' => $error,
-            'outofstock' => $outofstock
+            'outofstock' => $outofstock,
+            'created' => $created
         ));
 
         return $this->display(__FILE__, 'payment_return.tpl');
@@ -712,7 +655,7 @@ class Confirmo extends PaymentModule
      * @throws UnexpectedValueException if no API key has been set
      * @throws Exception if an unexpected API response was returned
      */
-    public function createPayment($cart, $cryptoCurrency, $requestData = array())
+    public function createPayment($cart, $requestData = array())
     {
         if (!$this->apiKey) {
             throw new UnexpectedValueException("CONFIRMO API Key has not been set.");
@@ -725,11 +668,11 @@ class Confirmo extends PaymentModule
             'invoice' => array(
                 'amount' => (string)$cart->getOrderTotal(),
                 'currencyFrom' => Currency::getCurrencyInstance($cart->id_currency)->iso_code,
-                'currencyTo' => $cryptoCurrency
+                'currencyTo' => null
             ),
             'settlement' => array(
                 // for cryptocurrencies, settlement currency must match the invoice currency - custom settlement currency is possible only for fiat currencies
-                'currency' => $this->getConfigValue('PAYOUT_CURRENCY') == 'CRYPTO' ? $cryptoCurrency : $this->getConfigValue('PAYOUT_CURRENCY')
+                'currency' => $this->getConfigValue('PAYOUT_CURRENCY') == 'CRYPTO' ? null : $this->getConfigValue('PAYOUT_CURRENCY')
             ),
             'reference' => json_encode(array(
                 'cart_id' => (string)$cart->id,
@@ -772,6 +715,7 @@ class Confirmo extends PaymentModule
             CURLOPT_HTTPHEADER => array(
                 "Content-Type: application/json",
                 "Authorization: Bearer " . $this->apiKey,
+                "X-Payment-Module: PrestaShop",
             ),
             CURLOPT_HEADER => false,
             CURLOPT_RETURNTRANSFER => true,

@@ -30,24 +30,20 @@
  *}
 
 {if $prestashop_15}
-  {foreach from=$payment_buttons item=item}
     <p class="payment_module">
-      <a href="{$item.payment_url|escape:'html':'UTF-8'}" title="{l s='Pay with' mod='confirmo'} {$item.name|escape:'html':'UTF-8'}">
-        <img src="{$item.button_image_url|escape:'html':'UTF-8'}" height="50" />
-        {l s='Pay with' mod='confirmo'} {$item.name|escape:'html':'UTF-8'}
+      <a href="{$payment_url|escape:'html':'UTF-8'}" title="{l s='Pay with Crypto' mod='confirmo'}">
+        <img src="views/img/ccy_crypto.svg" height="50" />
+        {l s='Pay with Crypto' mod='confirmo'}
       </a>
     </p>
-  {/foreach}
 {else}
-  {foreach from=$payment_buttons item=item}
     <div class="row">
       <div class="col-xs-12">
         <p class="payment_module">
-          <a class="confirmo bankwire" href="{$item.payment_url|escape:'html':'UTF-8'}" title="{l s='Pay with' mod='confirmo'} {$item.name|escape:'html':'UTF-8'}" style="background-image: url('{$item.button_image_url|escape:'html':'UTF-8'}'); background-position: 15px 50%;">
-            {l s='Pay with' mod='confirmo'} {$item.name|escape:'html':'UTF-8'}
+          <a class="confirmo bankwire" href="{$payment_url|escape:'html':'UTF-8'}" title="{l s='Pay with Crypto' mod='confirmo'}" style="background-image: url('views/img/ccy_crypto.svg'); background-position: 15px 50%;">
+            {l s='Pay with Crypto' mod='confirmo'}
           </a>
         </p>
       </div>
     </div>
-  {/foreach}
 {/if}
