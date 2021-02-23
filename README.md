@@ -6,7 +6,7 @@ CONFIRMO payment module for PrestaShop v1.5 - v1.7.
 Installation
 ------------
 
-1. Download the latest packaged version of the module from the [releases](https://github.com/confirmo/confirmo-prestashop/releases) page.
+1. Download the latest packaged version (confirmo.zip) of the module from the [release assets](https://github.com/confirmo/confirmo-prestashop/releases) page.
 3. Go to your PrestaShop admin **Modules** and upload the zip file using `Add a new module` function.
 4. Find uploaded CONFIRMO plugin in the modules list. If it does not appear in the module list, please try to search the plugin or change the filters. CONFIRMO plugin is located under Payment and Gateways, you will most probably need to display all payment plugins to see CONFIRMO.
 5. Once you locate CONFIRMO plugin in the module list click `Install` on the CONFIRMO module. You might see a pop-up informing you about the risks of unverified modules. It is safe to click `Proceed`.
