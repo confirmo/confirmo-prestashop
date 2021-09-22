@@ -139,7 +139,8 @@ class Confirmo extends PaymentModule
             !Configuration::deleteByName('CONFIRMO_STATUS_CREATED') ||
             !Configuration::deleteByName('CONFIRMO_STATUS_RECEIVED') ||
             !Configuration::deleteByName('CONFIRMO_STATUS_CONFIRMED') ||
-            !Configuration::deleteByName('CONFIRMO_STATUS_ERROR')/* ||
+            !Configuration::deleteByName('CONFIRMO_STATUS_ERROR') ||
+            !Configuration::deleteByName('CONFIRMO_UPDATE_ORDER_MESSAGES')/* ||
             !Configuration::deleteByName('CONFIRMO_STATUS_REFUND')*/
         ) {
             return false;
@@ -331,6 +332,25 @@ class Confirmo extends PaymentModule
                             'desc' => $this->l("Email address to send payment status notifications to. Leave blank to disable.")
                         ),
                         array(
+                            'tab' => 'general',
+                            'name' => 'CONFIRMO_UPDATE_ORDER_MESSAGES',
+                            'type' => 'switch',
+                            'label' =>  $this->l("Update order messages"),
+                            'desc' =>  $this->l("When enabled, payment status is added to the order as a message."),
+                            'values' => array(
+                                array(
+                                    'id' => 'active_on',
+                                    'value' => 1,
+                                    'label' => $this->l("Enable")
+                                ),
+                                array(
+                                    'id' => 'active_off',
+                                    'value' => 0,
+                                    'label' => $this->l("Disable")
+                                )
+                            )
+                        ),
+                        array(
                             'tab' => 'order_statuses',
                             'name' => 'CONFIRMO_STATUS_CONFIRMED',
                             'type' => 'select',
@@ -462,7 +482,8 @@ class Confirmo extends PaymentModule
             'CONFIRMO_STATUS_CREATED' => $this->getConfigValue('STATUS_CREATED', true),
             'CONFIRMO_STATUS_CONFIRMED' => $this->getConfigValue('STATUS_CONFIRMED', true),
             'CONFIRMO_STATUS_RECEIVED' => $this->getConfigValue('STATUS_RECEIVED', true),
-            'CONFIRMO_STATUS_ERROR' => $this->getConfigValue('STATUS_ERROR', true)/*,
+            'CONFIRMO_STATUS_ERROR' => $this->getConfigValue('STATUS_ERROR', true),
+            'CONFIRMO_UPDATE_ORDER_MESSAGES' => $this->getConfigValue('UPDATE_ORDER_MESSAGES', true)/*,
             'CONFIRMO_STATUS_REFUND' => $this->getConfigValue('STATUS_REFUND', true)*/
         );
     }
