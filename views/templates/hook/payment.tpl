@@ -40,7 +40,7 @@
     <div class="row">
       <div class="col-xs-12">
         <p class="payment_module">
-          <a class="confirmo bankwire" href="{$payment_url|escape:'html':'UTF-8'}" title="{l s='Pay with Crypto' mod='confirmo'}" style="background-image: url('views/img/ccy_crypto.svg'); background-position: 15px 50%;">
+          <a class="confirmo bankwire" href="{$payment_url|escape:'html':'UTF-8'}" title="{l s='Pay with Crypto' mod='confirmo'}" style="background-image: url('/modules/confirmo/views/img/ccy_crypto.svg'); background-position: 15px 50%;">
             {l s='Pay with Crypto' mod='confirmo'}
           </a>
         </p>
