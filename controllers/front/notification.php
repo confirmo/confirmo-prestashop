@@ -111,6 +111,7 @@ class ConfirmoNotificationModuleFrontController extends ModuleFrontController
                 die;
         }
 
+        $update_messages = $this->module->getConfigValue('UPDATE_ORDER_MESSAGES');
         // check if this cart has already been converted into an order
         if ($cart->orderExists()) {
             $order = new Order((int)OrderCore::getOrderByCartId($cart->id));
@@ -123,14 +124,16 @@ class ConfirmoNotificationModuleFrontController extends ModuleFrontController
                 $orderHistory->addWithemail(true);
             }
 
-            // attach new note for updated payment status
-            $message = new Message();
-            $message->message = $this->module->l('Updated Payment Status') . ': ' . $this->module->getStatusDesc($callbackData->status, $callbackData->unhandledExceptions);
-            $message->id_cart = $order->id_cart;
-            $message->id_customer = $order->id_customer;
-            $message->id_order = $order->id;
-            $message->private = true;
-            $message->add();
+            if($update_messages) {
+                // attach new note for updated payment status
+                $message = new Message();
+                $message->message = $this->module->l('Updated Payment Status') . ': ' . $this->module->getStatusDesc($callbackData->status, $callbackData->unhandledExceptions);
+                $message->id_cart = $order->id_cart;
+                $message->id_customer = $order->id_customer;
+                $message->id_order = $order->id;
+                $message->private = true;
+                $message->add();
+            }
 
         } else {
             // create order
@@ -160,13 +163,16 @@ class ConfirmoNotificationModuleFrontController extends ModuleFrontController
             if (!empty($callbackData->url)) {
                 $messageLines[] = $this->module->l('Invoice URL') . ': ' . $callbackData->url;
             }
-            $message = new Message();
-            $message->message = implode(PHP_EOL . ' ', $messageLines);
-            $message->id_cart = $order->id_cart;
-            $message->id_customer = $order->id_customer;
-            $message->id_order = $order->id;
-            $message->private = true;
-            $message->add();
+
+            if($update_messages) {
+                $message = new Message();
+                $message->message = implode(PHP_EOL . ' ', $messageLines);
+                $message->id_cart = $order->id_cart;
+                $message->id_customer = $order->id_customer;
+                $message->id_order = $order->id;
+                $message->private = true;
+                $message->add();
+            }
 
             // add Confirmo invoice URL to customer order note if enabled
             if (!empty($callbackData->url) && $this->module->getConfigValue('INVOICE_URL_MESSAGE')) {
